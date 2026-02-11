@@ -2,6 +2,9 @@
   <h1 align="center">fzf-oil.nvim</h1>
 </p>
 
+![fzf-oil](https://github.com/user-attachments/assets/cf576a61-c70c-474e-b667-fb0112ad5b7d)
+
+
 ![Neovim](https://badgen.net/badge/Neovim/0.11%2B/green)
 ![Lua](https://badgen.net/badge/language/Lua/blue)
 ![License](https://badgen.net/static/license/MIT/blue)
