@@ -74,7 +74,7 @@ local defaults = {
     zindex = 40,
     border = "rounded",
     keys = {
-        parent = "<C-BS>",
+        parent = "<C-h>",
         toggle_find = "<C-f>",
         edit = "<C-e>",
         quit = "q",
@@ -91,7 +91,7 @@ local defaults = {
 | Key | Action |
 |-----|--------|
 | `<CR>` | Open file or enter directory |
-| `<C-BS>` | Go to parent directory |
+| `<C-h>` | Go to parent directory |
 | `<C-f>` | Toggle recursive find mode |
 | `<C-e>` | Switch to oil |
 | `<C-g>` | Jump to home directory |
