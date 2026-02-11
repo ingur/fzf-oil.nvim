@@ -291,7 +291,7 @@ M.override = function(conf)
     return conf
 end
 
---- Ready-to-use float config for oil that matches fzf-lua styling.
+--- Helper float config for oil that matches fzf-lua styling.
 --- Usage: require("oil").setup({ float = require("fzf-oil").float })
 M.float = {
     border = "rounded", -- fallback for oil's internal checks, override sets actual value

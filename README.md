@@ -7,7 +7,7 @@
 ![License](https://badgen.net/static/license/MIT/blue)
 
 <p align="center">
-  Combines the strengths of <a href="https://github.com/ibhagwan/fzf-lua">fzf-lua</a>
+  A tiny (<300 LOC) plugin combining <a href="https://github.com/ibhagwan/fzf-lua">fzf-lua</a>
   and <a href="https://github.com/stevearc/oil.nvim">oil.nvim</a> for finding and
   file browsing, with seamless toggling between them.
 </p>
