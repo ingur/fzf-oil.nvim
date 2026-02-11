@@ -99,6 +99,7 @@ local defaults = {
 |-----|--------|
 | `<CR>` | Open file or enter directory |
 | `<C-h>` | Go to parent directory |
+| `<C-l>` | Enter directory |
 | `<C-f>` | Toggle recursive find mode |
 | `<C-e>` | Switch to oil |
 | `<C-g>` | Jump to home directory |
