@@ -69,12 +69,19 @@ vim.keymap.set("n", "<leader>fb", browser.browse, { desc = "File browser" })
 local defaults = {
     cmd = "fd --max-depth 1 --hidden --exclude .git --type f --type d --type l",
     find_cmd = "fd --hidden --exclude .git --type f --type l",
-    cwd = function() return vim.fn.expand("%:p:h") end,
+    cwd = function()        -- falls back to getcwd() for non-file buffers
+        local dir = vim.fn.expand("%:p:h")
+        if dir ~= "" and vim.fn.isdirectory(dir) == 1 then
+            return dir
+        end
+        return vim.fn.getcwd()
+    end,
     start_mode = "fzf", -- "fzf" or "oil"
     zindex = 40,
     border = "rounded",
     keys = {
         parent = "<C-h>",
+        child = "<C-l>",
         toggle_find = "<C-f>",
         edit = "<C-e>",
         quit = "q",

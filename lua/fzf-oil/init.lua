@@ -5,12 +5,19 @@ local api = vim.api
 local defaults = {
     cmd = "fd --max-depth 1 --hidden --exclude .git --type f --type d --type l",
     find_cmd = "fd --hidden --exclude .git --type f --type l",
-    cwd = function() return vim.fn.expand("%:p:h") end,
+    cwd = function()
+        local dir = vim.fn.expand("%:p:h")
+        if dir ~= "" and vim.fn.isdirectory(dir) == 1 then
+            return dir
+        end
+        return vim.fn.getcwd()
+    end,
     start_mode = "fzf", -- "fzf" or "oil"
     zindex = 40,
     border = "rounded",
     keys = {
         parent = "<C-h>",
+        child = "<C-l>",
         toggle_find = "<C-f>",
         edit = "<C-e>",
         quit = "q",
@@ -228,6 +235,14 @@ local function browse(config, cwd, find_mode)
             [vim_to_fzf(config.keys.parent)] = function()
                 local parent = vim.fn.fnamemodify(cwd, ":h")
                 if parent ~= cwd then browse(config, parent, find_mode) end
+            end,
+            [vim_to_fzf(config.keys.child)] = function(selected)
+                if not selected or #selected == 0 then return end
+                local entry = fzf.path.entry_to_file(selected[1]).path
+                local full = cwd .. "/" .. entry
+                if vim.fn.isdirectory(full) == 1 then
+                    browse(config, full, find_mode)
+                end
             end,
             [vim_to_fzf(config.keys.toggle_find)] = function()
                 browse(config, cwd, not find_mode)
