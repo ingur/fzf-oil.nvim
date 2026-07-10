@@ -55,11 +55,23 @@ local function vim_to_fzf(key)
     return key
 end
 
+-- fzf-lua.config is internal; guard it so a refactor there falls back to defaults
+local fzf_winopts_fallback = {
+    width = 0.80, height = 0.85, row = 0.35, col = 0.55, backdrop = 60,
+}
+
+local function fzf_winopts()
+    local ok, config = pcall(require, "fzf-lua.config")
+    if ok and type(config.globals) == "table" and type(config.globals.winopts) == "table" then
+        return config.globals.winopts
+    end
+    return fzf_winopts_fallback
+end
+
 -- window sizing (reads from fzf-lua's resolved config)
 
 local function fzf_win_opts()
-    local fzf_config = require("fzf-lua.config").globals
-    local winopts = fzf_config.winopts
+    local winopts = fzf_winopts()
     local width = winopts.width or 0.80
     local height = winopts.height or 0.85
     local row = winopts.row or 0.35
@@ -92,7 +104,7 @@ end
 local function create_backdrop()
     close_backdrop()
 
-    local winopts = require("fzf-lua.config").globals.winopts
+    local winopts = fzf_winopts()
 
     local opacity = winopts.backdrop
     if not opacity or opacity == false then return end
