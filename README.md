@@ -94,6 +94,10 @@ local defaults = {
 }
 ```
 
+> [!NOTE]
+> `fzf_exec_opts` is deep-merged into the options passed to fzf-lua's `fzf_exec`,
+> so you can override any fzf-lua picker option (previewer, layout, actions, ...).
+
 ## Keybindings
 
 ### fzf mode
