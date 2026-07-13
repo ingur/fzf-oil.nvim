@@ -10,7 +10,7 @@
 ![License](https://badgen.net/static/license/MIT/blue)
 
 <p align="center">
-  A tiny (<300 LOC) plugin combining <a href="https://github.com/ibhagwan/fzf-lua">fzf-lua</a>
+  A tiny (~400 LOC) plugin combining <a href="https://github.com/ibhagwan/fzf-lua">fzf-lua</a>
   and <a href="https://github.com/stevearc/oil.nvim">oil.nvim</a> for finding and
   file browsing, with seamless toggling between them.
 </p>
@@ -18,19 +18,22 @@
 ## Features
 - Browse directories with fzf-lua, navigate into subdirectories or up to parent.
 - Toggle into oil.nvim for full directory editing, toggle back to fzf.
-- Window sizing, backdrop, and border are inherited from your fzf-lua config.
-- Recursive find mode to search across all subdirectories.
-- All keybindings are configurable.
+- Seamless transitions, query and position are preserved when toggling.
+- Fuzzy find files across all subdirectories with a single toggle.
+- Sizing, backdrop, border, and preview are inherited from your fzf-lua config.
+- The same navigation keys work in both modes, all of them configurable.
 
 ## Requirements
 - Neovim 0.11+
 - [fzf-lua](https://github.com/ibhagwan/fzf-lua)
 - [oil.nvim](https://github.com/stevearc/oil.nvim)
 - [fd](https://github.com/sharkdp/fd)
+- [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) or
+  [mini.icons](https://github.com/echasnovski/mini.icons) (optional)
 
 ## Installation
 
-With vim.pack:
+With vim.pack (Neovim 0.12+):
 ```lua
 vim.pack.add({
     "https://github.com/ibhagwan/fzf-lua",
@@ -52,9 +55,10 @@ With lazy.nvim:
 
 ## Quickstart
 ```lua
--- use fzf-oil's float helper so oil matches fzf-lua's dimensions
+-- use fzf-oil's helpers so oil matches fzf-lua's styling
 require("oil").setup({
     float = require("fzf-oil").float,
+    preview_win = require("fzf-oil").preview_win,
 })
 
 local browser = require("fzf-oil").setup()
@@ -63,8 +67,8 @@ vim.keymap.set("n", "<leader>fb", browser.browse, { desc = "File browser" })
 ```
 
 > [!TIP]
-> `require("fzf-oil").float` provides an override that syncs oil's floating
-> window size and border with your fzf-lua config. You can also use
+> The `float` and `preview_win` helpers sync oil's floating windows with your
+> fzf-lua config (size, border, title, preview styling). You can also use
 > `require("fzf-oil").override` directly in your own oil float config.
 
 ## Defaults
@@ -85,6 +89,8 @@ local defaults = {
     keys = {
         parent = "<C-h>",
         child = "<C-l>",
+        down = "<C-j>",
+        up = "<C-k>",
         toggle_find = "<C-f>",
         edit = "<C-e>",
         quit = "q",
@@ -107,7 +113,8 @@ local defaults = {
 | `<CR>` | Open file or enter directory |
 | `<C-h>` | Go to parent directory |
 | `<C-l>` | Enter directory |
-| `<C-f>` | Toggle recursive find mode |
+| `<C-j>` / `<C-k>` | Move down / up |
+| `<C-f>` | Toggle find mode |
 | `<C-e>` | Switch to oil |
 | `<C-g>` | Jump to home directory |
 
@@ -115,6 +122,10 @@ local defaults = {
 
 | Key | Action |
 |-----|--------|
+| `<C-h>` | Go to parent directory |
+| `<C-l>` | Enter directory |
+| `<C-j>` / `<C-k>` | Move down / up |
+| `<C-f>` | Switch to fzf in find mode |
 | `<C-e>` | Switch back to fzf |
 | `q` | Switch back to fzf |
 | `<C-g>` | Jump to home directory |
