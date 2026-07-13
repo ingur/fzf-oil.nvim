@@ -126,7 +126,7 @@ local defaults = {
 | `<C-j>` / `<C-k>` | Move down / up |
 | `<C-f>` | Switch to fzf in find mode |
 | `<C-e>` | Switch back to fzf |
-| `q` | Switch back to fzf |
+| `q` | Quit the browser |
 | `<C-g>` | Jump to home directory |
 
 All keys are configurable through `setup({ keys = { ... } })`.
