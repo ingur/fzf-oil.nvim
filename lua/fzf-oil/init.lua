@@ -59,7 +59,7 @@ local function vim_to_fzf(key)
     return key
 end
 
--- fzf-lua.config is internal; guard it so a refactor there falls back to defaults
+-- fzf-lua.config is internal, guard it so a refactor there falls back to defaults
 local fzf_winopts_fallback = {
     width = 0.80, height = 0.85, row = 0.35, col = 0.55, backdrop = 60, zindex = 50,
 }
@@ -86,7 +86,7 @@ local function fzf_win_opts()
     local h = math.floor((vim.o.lines - ch) * height) - 2
     local r = math.floor((vim.o.lines - h - 2) * row)
     local c = math.floor((vim.o.columns - w - 2) * col)
-    -- oil floats above the fzf window so transitions overlap seamlessly
+    -- oil floats above the fzf window during transitions
     return { width = w, height = h, row = r, col = c, zindex = (winopts.zindex or 50) + 1 }
 end
 
@@ -208,8 +208,8 @@ local function open_editor(config, cwd, find_mode)
         end,
     }
 
-    -- OilEnter fires after oil's own keymaps but only on first render;
-    -- BufEnter + b.oil_ready covers reused cached buffers
+    -- OilEnter only fires on first render (after oil sets its own keymaps),
+    -- reused cached buffers are covered by BufEnter + b.oil_ready
     api.nvim_create_autocmd("User", {
         group = ag,
         pattern = "OilEnter",
@@ -254,11 +254,10 @@ end
 -- fzf browser
 
 local function title(dir)
-    return " " .. vim.fn.fnamemodify(dir, ":~") .. "/ "
+    return " " .. vim.fn.fnamemodify(dir, ":~"):gsub("/+$", "") .. "/ "
 end
 
--- reload actions swap the listing inside the running fzf process; the
--- in-process producer re-reads opts.cwd and the contents function on reload
+-- the in-process producer re-reads opts.cwd, so reload actions re-list in place
 local function reload(fn)
     return { fn = fn, reload = true, postfix = "clear-query" }
 end
@@ -389,8 +388,12 @@ end
 M.float = {
     border = "rounded", -- fallback for oil's internal checks, override sets actual value
     override = M.override,
+    get_win_title = function(winid)
+        return title(require("oil").get_current_dir(api.nvim_win_get_buf(winid)) or "")
+    end,
     win_options = {
-        winhl = "NormalFloat:FzfLuaNormal,FloatBorder:FzfLuaBorder",
+        winhl = "NormalFloat:FzfLuaNormal,FloatBorder:FzfLuaBorder,FloatTitle:FzfLuaTitle",
+        fillchars = "eob: ",
     },
 }
 
