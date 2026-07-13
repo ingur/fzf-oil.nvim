@@ -154,9 +154,23 @@ end
 local function open_editor(config, cwd, find_mode)
     local ag = api.nvim_create_augroup("fzf-oil", { clear = true })
 
-    local function toggle_back()
-        local dir = require("oil").get_current_dir() or cwd
+    local maps
+    local mapped = {}
+
+    local function teardown()
         api.nvim_clear_autocmds({ group = ag })
+        for buf in pairs(mapped) do
+            if api.nvim_buf_is_valid(buf) then
+                for k in pairs(maps) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
+            end
+        end
+        mapped = {}
+    end
+
+    local function toggle_back()
+        if api.nvim_get_current_win() ~= state.oil_win then return end
+        local dir = require("oil").get_current_dir() or cwd
+        teardown()
         local win = state.oil_win
         state.oil_win = nil
         local ok, err = pcall(toggle_fzf, config, dir, find_mode)
@@ -166,17 +180,31 @@ local function open_editor(config, cwd, find_mode)
         if not ok then notify_err(err) end
     end
 
-    -- keymaps via OilEnter (fires for every new oil buffer during navigation)
+    maps = {
+        [config.keys.edit] = toggle_back,
+        [config.keys.quit] = toggle_back,
+        [config.keys.home] = function() require("oil").open(vim.env.HOME) end,
+        [config.keys.parent] = function() require("oil.actions").parent.callback() end,
+        [config.keys.child] = function()
+            local oil = require("oil")
+            local entry = oil.get_cursor_entry()
+            if entry and vim.fn.isdirectory(oil.get_current_dir() .. entry.name) == 1 then
+                require("oil.actions").select.callback()
+            end
+        end,
+    }
+
+    -- OilEnter fires for every oil buffer entered during navigation
     api.nvim_create_autocmd("User", {
         group = ag,
         pattern = "OilEnter",
         callback = function(args)
+            if api.nvim_win_get_config(0).relative == "" then return end
             local buf = args.data and args.data.buf or api.nvim_get_current_buf()
-            vim.keymap.set("n", config.keys.edit, toggle_back, { buffer = buf, desc = "fzf-oil: toggle fzf" })
-            vim.keymap.set("n", config.keys.quit, toggle_back, { buffer = buf, desc = "fzf-oil: quit" })
-            vim.keymap.set("n", config.keys.home, function()
-                require("oil").open(vim.env.HOME)
-            end, { buffer = buf, desc = "fzf-oil: go home" })
+            mapped[buf] = true
+            for k, fn in pairs(maps) do
+                vim.keymap.set("n", k, fn, { buffer = buf, desc = "fzf-oil" })
+            end
         end,
     })
 
@@ -189,6 +217,7 @@ local function open_editor(config, cwd, find_mode)
         pattern = tostring(state.oil_win),
         once = true,
         callback = function()
+            teardown()
             state.oil_win = nil
             close_backdrop()
             discard_hidden()
