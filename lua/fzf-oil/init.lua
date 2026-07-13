@@ -18,6 +18,8 @@ local defaults = {
     keys = {
         parent = "<C-h>",
         child = "<C-l>",
+        down = "<C-j>",
+        up = "<C-k>",
         toggle_find = "<C-f>",
         edit = "<C-e>",
         quit = "q",
@@ -198,6 +200,8 @@ local function open_editor(config, cwd, find_mode)
         [config.keys.edit] = toggle_back,
         [config.keys.quit] = toggle_back,
         [config.keys.home] = function() require("oil").open(vim.env.HOME) end,
+        [config.keys.down] = "j",
+        [config.keys.up] = "k",
         [config.keys.parent] = function() require("oil.actions").parent.callback() end,
         [config.keys.child] = function()
             local oil = require("oil")
@@ -298,6 +302,12 @@ browse = function(config, cwd, find_mode)
                     close_backdrop()
                 end
             end,
+        },
+        keymap = {
+            fzf = {
+                [vim_to_fzf(config.keys.down)] = "down",
+                [vim_to_fzf(config.keys.up)] = "up",
+            },
         },
         actions = {
             ["enter"] = reload(function(selected, o)
