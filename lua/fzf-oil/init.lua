@@ -99,6 +99,7 @@ local state = {
     backdrop = nil,   -- { win, buf } dimming the editor for the whole session
     oil_win = nil,    -- oil float window while in oil mode
     hidden_cwd = nil, -- cwd of the hidden fzf picker while in oil mode
+    fzf_panes = nil,  -- fzf list/preview rects captured when toggling to oil
 }
 
 local function close_backdrop()
@@ -139,10 +140,41 @@ local function discard_hidden()
     require("fzf-lua").win.close()
 end
 
+local function oil_preview_win()
+    for _, w in ipairs(api.nvim_list_wins()) do
+        if vim.w[w].oil_preview then return w end
+    end
+end
+
+local function win_rect(win)
+    local c = api.nvim_win_get_config(win)
+    return { relative = "editor", row = c.row, col = c.col, width = c.width, height = c.height }
+end
+
+-- place oil's panes exactly where the fzf panes were and match the preview style
+local function open_oil_preview()
+    local panes = state.fzf_panes
+    local oil_float = require("oil.config").float
+    local saved = oil_float.preview_split
+    oil_float.preview_split = panes.preview.col > panes.list.col and "right" or "below"
+    require("oil").open_preview({}, function(err)
+        local pw = oil_preview_win()
+        if err or not pw or not (state.oil_win and api.nvim_win_is_valid(state.oil_win)) then
+            return
+        end
+        api.nvim_win_set_config(state.oil_win, panes.list)
+        api.nvim_win_set_config(pw, vim.tbl_extend("force", panes.preview, {
+            title = api.nvim_win_get_config(pw).title,
+            title_pos = "center",
+        }))
+        vim.wo[pw].winhl = "NormalFloat:FzfLuaNormal,FloatBorder:FzfLuaBorder,FloatTitle:FzfLuaPreviewTitle"
+    end)
+    oil_float.preview_split = saved
+end
+
 local browse
 
--- resume the hidden fzf picker if oil is still on the same directory
--- (instant, query preserved), otherwise start a fresh one
+-- resume the hidden picker when oil stayed in the same directory, else start fresh
 local function toggle_fzf(config, dir, find_mode)
     local same = state.hidden_cwd and state.hidden_cwd == dir:gsub("/+$", "")
     state.hidden_cwd = nil
@@ -158,20 +190,31 @@ local function open_editor(config, cwd, find_mode)
 
     local maps
     local mapped = {}
+    local previewed = false
 
+    -- oil reapplies its own keymaps when it reinitializes a buffer, so always
+    -- set ours again and only capture the originals once
     local function set_maps(buf)
-        if mapped[buf] then return end
-        mapped[buf] = {}
+        mapped[buf] = mapped[buf] or {}
         for k, fn in pairs(maps) do
-            mapped[buf][k] = vim.fn.maparg(k, "n", false, true)
+            if mapped[buf][k] == nil then
+                mapped[buf][k] = vim.fn.maparg(k, "n", false, true)
+            end
             vim.keymap.set("n", k, fn, { buffer = buf, desc = "fzf-oil" })
+        end
+        if not previewed and state.fzf_panes and require("oil").get_cursor_entry() then
+            previewed = true
+            pcall(open_oil_preview)
         end
     end
 
     local function teardown()
         api.nvim_clear_autocmds({ group = ag })
+        -- oil only closes its preview when focus leaves oil for a non-oil buffer
+        local pw = oil_preview_win()
+        if pw then api.nvim_win_close(pw, true) end
         for buf, saved in pairs(mapped) do
-            if api.nvim_buf_is_valid(buf) then
+            if api.nvim_buf_is_valid(buf) and vim.bo[buf].filetype == "oil" then
                 api.nvim_buf_call(buf, function()
                     for k, m in pairs(saved) do
                         pcall(vim.keymap.del, "n", k, { buffer = buf })
@@ -337,6 +380,11 @@ browse = function(config, cwd, find_mode)
             [vim_to_fzf(config.keys.edit)] = {
                 fn = function()
                     state.hidden_cwd = session.cwd
+                    local W = fzf.win.__SELF()
+                    state.fzf_panes = W and W.preview_winid
+                        and api.nvim_win_is_valid(W.preview_winid)
+                        and { list = win_rect(W.fzf_winid), preview = win_rect(W.preview_winid) }
+                        or nil
                     local ok, err = pcall(open_editor, config, session.cwd, session.find)
                     if ok then
                         fzf.hide()
@@ -369,6 +417,7 @@ M.setup = function(opts)
 
     config.browse = function(cwd, find_mode)
         ensure_backdrop()
+        state.fzf_panes = nil
         if config.start_mode == "oil" then
             state.hidden_cwd = nil
             open_editor(config, cwd and eval(cwd), find_mode)
@@ -404,6 +453,16 @@ M.float = {
     win_options = {
         winhl = "NormalFloat:FzfLuaNormal,FloatBorder:FzfLuaBorder,FloatTitle:FzfLuaTitle",
         fillchars = "eob: ",
+    },
+}
+
+--- Helper preview config for oil that matches fzf-lua's previewer styling.
+--- Usage: require("oil").setup({ preview_win = require("fzf-oil").preview_win })
+M.preview_win = {
+    win_options = {
+        number = true,
+        relativenumber = false,
+        winhl = "NormalFloat:FzfLuaNormal,FloatBorder:FzfLuaBorder,FloatTitle:FzfLuaPreviewTitle",
     },
 }
 
