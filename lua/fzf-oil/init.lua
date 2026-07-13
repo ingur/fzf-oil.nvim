@@ -202,9 +202,10 @@ local function open_editor(config, cwd, find_mode)
             end
             vim.keymap.set("n", k, fn, { buffer = buf, desc = "fzf-oil" })
         end
+        -- opening the preview mid-render trips oil's cursor constraining
         if not previewed and state.fzf_panes and require("oil").get_cursor_entry() then
             previewed = true
-            pcall(open_oil_preview)
+            vim.schedule(function() pcall(open_oil_preview) end)
         end
     end
 
@@ -230,7 +231,13 @@ local function open_editor(config, cwd, find_mode)
         if api.nvim_get_current_win() ~= state.oil_win then return end
         if find == nil then find = find_mode end
         if find ~= find_mode then state.hidden_cwd = nil end
-        local dir = require("oil").get_current_dir() or cwd
+        local oil = require("oil")
+        local dir = oil.get_current_dir() or cwd
+        -- oil only records cursor memory when navigating within oil, not on close
+        local entry = oil.get_cursor_entry()
+        if entry then
+            pcall(require("oil.view").set_last_cursor, api.nvim_buf_get_name(0), entry.name)
+        end
         teardown()
         local win = state.oil_win
         state.oil_win = nil
