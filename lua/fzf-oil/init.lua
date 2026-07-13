@@ -226,13 +226,15 @@ local function open_editor(config, cwd, find_mode)
         mapped = {}
     end
 
-    local function toggle_back()
+    local function toggle_back(find)
         if api.nvim_get_current_win() ~= state.oil_win then return end
+        if find == nil then find = find_mode end
+        if find ~= find_mode then state.hidden_cwd = nil end
         local dir = require("oil").get_current_dir() or cwd
         teardown()
         local win = state.oil_win
         state.oil_win = nil
-        local ok, err = pcall(toggle_fzf, config, dir, find_mode)
+        local ok, err = pcall(toggle_fzf, config, dir, find)
         if win and api.nvim_win_is_valid(win) then
             api.nvim_win_close(win, true)
         end
@@ -242,6 +244,7 @@ local function open_editor(config, cwd, find_mode)
     maps = {
         [config.keys.edit] = toggle_back,
         [config.keys.quit] = toggle_back,
+        [config.keys.toggle_find] = function() toggle_back(true) end,
         [config.keys.home] = function() require("oil").open(vim.env.HOME) end,
         [config.keys.down] = "j",
         [config.keys.up] = "k",
