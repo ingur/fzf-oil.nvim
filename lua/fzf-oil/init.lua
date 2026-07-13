@@ -157,11 +157,25 @@ local function open_editor(config, cwd, find_mode)
     local maps
     local mapped = {}
 
+    local function set_maps(buf)
+        if mapped[buf] then return end
+        mapped[buf] = {}
+        for k, fn in pairs(maps) do
+            mapped[buf][k] = vim.fn.maparg(k, "n", false, true)
+            vim.keymap.set("n", k, fn, { buffer = buf, desc = "fzf-oil" })
+        end
+    end
+
     local function teardown()
         api.nvim_clear_autocmds({ group = ag })
-        for buf in pairs(mapped) do
+        for buf, saved in pairs(mapped) do
             if api.nvim_buf_is_valid(buf) then
-                for k in pairs(maps) do pcall(vim.keymap.del, "n", k, { buffer = buf }) end
+                api.nvim_buf_call(buf, function()
+                    for k, m in pairs(saved) do
+                        pcall(vim.keymap.del, "n", k, { buffer = buf })
+                        if m.buffer == 1 then vim.fn.mapset("n", false, m) end
+                    end
+                end)
             end
         end
         mapped = {}
@@ -194,16 +208,22 @@ local function open_editor(config, cwd, find_mode)
         end,
     }
 
-    -- OilEnter fires for every oil buffer entered during navigation
+    -- OilEnter fires after oil's own keymaps but only on first render;
+    -- BufEnter + b.oil_ready covers reused cached buffers
     api.nvim_create_autocmd("User", {
         group = ag,
         pattern = "OilEnter",
         callback = function(args)
-            if api.nvim_win_get_config(0).relative == "" then return end
             local buf = args.data and args.data.buf or api.nvim_get_current_buf()
-            mapped[buf] = true
-            for k, fn in pairs(maps) do
-                vim.keymap.set("n", k, fn, { buffer = buf, desc = "fzf-oil" })
+            if api.nvim_win_get_config(0).relative ~= "" then set_maps(buf) end
+        end,
+    })
+    api.nvim_create_autocmd("BufEnter", {
+        group = ag,
+        pattern = "oil://*",
+        callback = function(args)
+            if api.nvim_win_get_config(0).relative ~= "" and vim.b[args.buf].oil_ready then
+                set_maps(args.buf)
             end
         end,
     })
