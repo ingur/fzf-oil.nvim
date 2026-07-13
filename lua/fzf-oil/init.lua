@@ -233,31 +233,46 @@ end
 
 -- fzf browser
 
--- exec_silent actions keep the fzf process alive while the fn runs; starting
--- a new picker from one swaps the buffer into the same window (no flicker)
-local function action(fn)
-    return { fn = fn, exec_silent = true }
+local function title(dir)
+    return " " .. vim.fn.fnamemodify(dir, ":~") .. "/ "
+end
+
+-- reload actions swap the listing inside the running fzf process; the
+-- in-process producer re-reads opts.cwd and the contents function on reload
+local function reload(fn)
+    return { fn = fn, reload = true, postfix = "clear-query" }
 end
 
 browse = function(config, cwd, find_mode)
     cwd = vim.fn.resolve(eval(cwd) or eval(config.cwd)):gsub("/+$", "")
 
     local fzf = require("fzf-lua")
-    local cmd = find_mode and config.find_cmd or config.cmd
+    local session = { cwd = cwd, find = find_mode }
 
-    local function sel_path(selected)
+    local function nav(o, dir)
+        dir = vim.fn.resolve(dir):gsub("/+$", "")
+        o.cwd = dir
+        session.cwd = dir
+        local win = fzf.win.__SELF()
+        if win then pcall(win.update_main_title, win, title(dir)) end
+    end
+
+    local function sel_path(o, selected)
         if not selected or #selected == 0 then return end
-        return cwd .. "/" .. fzf.path.entry_to_file(selected[1]).path
+        return o.cwd .. "/" .. fzf.path.entry_to_file(selected[1]).path
     end
 
     local opts = vim.tbl_deep_extend("force", {
         _type = "file",
+        __stringify_cmd = true,
+        multiprocess = false,
         cwd = cwd,
-        prompt = vim.fn.fnamemodify(cwd, ":~") .. "/",
         formatter = false,
         previewer = "builtin",
         winopts = {
-            backdrop = false, -- use our own session-wide backdrop
+            title = title(cwd),
+            title_pos = "left",
+            backdrop = false,
             border = config.border,
             on_close = function()
                 if not (state.oil_win and api.nvim_win_is_valid(state.oil_win)) then
@@ -266,46 +281,49 @@ browse = function(config, cwd, find_mode)
             end,
         },
         actions = {
-            ["enter"] = action(function(selected)
-                local full = sel_path(selected)
+            ["enter"] = reload(function(selected, o)
+                local full = sel_path(o, selected)
                 if not full then return end
                 if vim.fn.isdirectory(full) == 1 then
-                    browse(config, full, find_mode)
+                    nav(o, full)
                 else
                     fzf.win.close()
                     vim.cmd("edit " .. vim.fn.fnameescape(full))
                 end
             end),
-            [vim_to_fzf(config.keys.parent)] = action(function()
-                local parent = vim.fn.fnamemodify(cwd, ":h")
-                if parent ~= cwd then browse(config, parent, find_mode) end
+            [vim_to_fzf(config.keys.parent)] = reload(function(_, o)
+                nav(o, vim.fn.fnamemodify(o.cwd, ":h"))
             end),
-            [vim_to_fzf(config.keys.child)] = action(function(selected)
-                local full = sel_path(selected)
-                if full and vim.fn.isdirectory(full) == 1 then
-                    browse(config, full, find_mode)
-                end
+            [vim_to_fzf(config.keys.child)] = reload(function(selected, o)
+                local full = sel_path(o, selected)
+                if full and vim.fn.isdirectory(full) == 1 then nav(o, full) end
             end),
-            [vim_to_fzf(config.keys.toggle_find)] = action(function()
-                browse(config, cwd, not find_mode)
+            [vim_to_fzf(config.keys.home)] = reload(function(_, o)
+                nav(o, vim.env.HOME)
             end),
-            [vim_to_fzf(config.keys.home)] = action(function()
-                browse(config, vim.env.HOME, find_mode)
-            end),
-            [vim_to_fzf(config.keys.edit)] = action(function()
-                state.hidden_cwd = cwd
-                local ok, err = pcall(open_editor, config, cwd, find_mode)
-                if ok then
-                    fzf.hide()
-                else
-                    state.hidden_cwd = nil
-                    notify_err(err)
-                end
-            end),
+            [vim_to_fzf(config.keys.toggle_find)] = {
+                fn = function() session.find = not session.find end,
+                reload = true,
+            },
+            [vim_to_fzf(config.keys.edit)] = {
+                fn = function()
+                    state.hidden_cwd = session.cwd
+                    local ok, err = pcall(open_editor, config, session.cwd, session.find)
+                    if ok then
+                        fzf.hide()
+                    else
+                        state.hidden_cwd = nil
+                        notify_err(err)
+                    end
+                end,
+                exec_silent = true,
+            },
         },
     }, config.fzf_exec_opts)
 
-    fzf.fzf_exec(cmd, opts)
+    fzf.fzf_exec(function()
+        return session.find and config.find_cmd or config.cmd
+    end, opts)
 end
 
 -- public api
