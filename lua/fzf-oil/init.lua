@@ -33,6 +33,10 @@ local function eval(v)
     return v
 end
 
+local function notify_err(err)
+    vim.notify("fzf-oil: " .. tostring(err), vim.log.levels.ERROR)
+end
+
 -- translate vim keymap notation ("<C-e>") to fzf key notation ("ctrl-e")
 local vim_special = {
     BS = "bs", CR = "enter", Space = "space", Tab = "tab",
@@ -57,7 +61,7 @@ end
 
 -- fzf-lua.config is internal; guard it so a refactor there falls back to defaults
 local fzf_winopts_fallback = {
-    width = 0.80, height = 0.85, row = 0.35, col = 0.55, backdrop = 60,
+    width = 0.80, height = 0.85, row = 0.35, col = 0.55, backdrop = 60, zindex = 50,
 }
 
 local function fzf_winopts()
@@ -82,36 +86,36 @@ local function fzf_win_opts()
     local h = math.floor((vim.o.lines - ch) * height) - 2
     local r = math.floor((vim.o.lines - h - 2) * row)
     local c = math.floor((vim.o.columns - w - 2) * col)
-    return { width = w, height = h, row = r, col = c }
+    -- oil floats above the fzf window so transitions overlap seamlessly
+    return { width = w, height = h, row = r, col = c, zindex = (winopts.zindex or 50) + 1 }
 end
 
--- backdrop management
+-- session state
 
-local active_config = defaults
-local backdrop = { win = nil, buf = nil }
+local state = {
+    config = defaults,
+    backdrop = nil,   -- { win, buf } dimming the editor for the whole session
+    oil_win = nil,    -- oil float window while in oil mode
+    hidden_cwd = nil, -- cwd of the hidden fzf picker while in oil mode
+}
 
 local function close_backdrop()
-    if backdrop.win and api.nvim_win_is_valid(backdrop.win) then
-        api.nvim_win_close(backdrop.win, true)
-    end
-    if backdrop.buf and api.nvim_buf_is_valid(backdrop.buf) then
-        api.nvim_buf_delete(backdrop.buf, { force = true })
-    end
-    backdrop.win = nil
-    backdrop.buf = nil
+    local b = state.backdrop
+    state.backdrop = nil
+    if not b then return end
+    if api.nvim_win_is_valid(b.win) then api.nvim_win_close(b.win, true) end
+    if api.nvim_buf_is_valid(b.buf) then api.nvim_buf_delete(b.buf, { force = true }) end
 end
 
-local function create_backdrop()
-    close_backdrop()
+local function ensure_backdrop()
+    if state.backdrop and api.nvim_win_is_valid(state.backdrop.win) then return end
 
-    local winopts = fzf_winopts()
-
-    local opacity = winopts.backdrop
+    local opacity = fzf_winopts().backdrop
     if not opacity or opacity == false then return end
     if type(opacity) == "boolean" then opacity = 60 end
 
-    backdrop.buf = api.nvim_create_buf(false, true)
-    backdrop.win = api.nvim_open_win(backdrop.buf, false, {
+    local buf = api.nvim_create_buf(false, true)
+    local win = api.nvim_open_win(buf, false, {
         relative = "editor",
         width = vim.o.columns,
         height = vim.o.lines,
@@ -119,47 +123,47 @@ local function create_backdrop()
         col = 0,
         style = "minimal",
         focusable = false,
-        zindex = active_config.zindex,
+        zindex = state.config.zindex,
         border = "none",
     })
-    vim.wo[backdrop.win].winhl = "Normal:FzfLuaBackdrop"
-    vim.wo[backdrop.win].winblend = opacity
+    vim.wo[win].winhl = "Normal:FzfLuaBackdrop"
+    vim.wo[win].winblend = opacity
+    state.backdrop = { win = win, buf = buf }
 end
 
--- oil float tracking
+local function discard_hidden()
+    if not state.hidden_cwd then return end
+    state.hidden_cwd = nil
+    require("fzf-lua").win.close()
+end
 
-local oil_win = nil
-local transitioning = false
+local browse
 
-local function close_oil()
-    if oil_win and api.nvim_win_is_valid(oil_win) then
-        api.nvim_win_close(oil_win, true)
+-- resume the hidden fzf picker if oil is still on the same directory
+-- (instant, query preserved), otherwise start a fresh one
+local function toggle_fzf(config, dir, find_mode)
+    local same = state.hidden_cwd and state.hidden_cwd == dir:gsub("/+$", "")
+    state.hidden_cwd = nil
+    if not (same and require("fzf-lua").unhide()) then
+        browse(config, dir, find_mode)
     end
-    oil_win = nil
 end
 
 -- oil editor
 
-local function open_editor(config, cwd, on_toggle)
-    close_oil()
-
-    local ag = api.nvim_create_augroup("fzf-oil-keymaps", { clear = true })
+local function open_editor(config, cwd, find_mode)
+    local ag = api.nvim_create_augroup("fzf-oil", { clear = true })
 
     local function toggle_back()
-        if transitioning then return end
         local dir = require("oil").get_current_dir() or cwd
         api.nvim_clear_autocmds({ group = ag })
-        local prev_win = oil_win
-        oil_win = nil
-        transitioning = true
-        local ok, err = pcall(on_toggle, dir)
-        -- oil's WinLeave autocmd also tries to close this window;
-        -- the nvim_win_is_valid guard in both paths prevents double-close issues
-        if prev_win and api.nvim_win_is_valid(prev_win) then
-            api.nvim_win_close(prev_win, true)
+        local win = state.oil_win
+        state.oil_win = nil
+        local ok, err = pcall(toggle_fzf, config, dir, find_mode)
+        if win and api.nvim_win_is_valid(win) then
+            api.nvim_win_close(win, true)
         end
-        vim.schedule(function() transitioning = false end)
-        if not ok then vim.notify("fzf-oil: " .. tostring(err), vim.log.levels.ERROR) end
+        if not ok then notify_err(err) end
     end
 
     -- keymaps via OilEnter (fires for every new oil buffer during navigation)
@@ -177,100 +181,98 @@ local function open_editor(config, cwd, on_toggle)
     })
 
     require("oil").open_float(cwd)
-    oil_win = api.nvim_get_current_win()
+    state.oil_win = api.nvim_get_current_win()
 
-    -- oil exit detection
+    -- oil closed without toggling back (":q", opening a file, ...)
     api.nvim_create_autocmd("WinClosed", {
         group = ag,
-        pattern = tostring(oil_win),
+        pattern = tostring(state.oil_win),
         once = true,
         callback = function()
-            vim.schedule(function()
-                if transitioning then return end
-                close_backdrop()
-            end)
+            state.oil_win = nil
+            close_backdrop()
+            discard_hidden()
         end,
     })
 
-    -- resize oil float to match fzf-lua dimensions
-    local wopts = fzf_win_opts()
-    api.nvim_win_set_config(oil_win, {
-        relative = "editor",
-        width = wopts.width,
-        height = wopts.height,
-        row = wopts.row,
-        col = wopts.col,
-    })
+    -- fallback sizing for setups without the float helper below
+    if require("oil.config").float.override ~= M.override then
+        api.nvim_win_set_config(state.oil_win,
+            vim.tbl_extend("force", { relative = "editor" }, fzf_win_opts()))
+    end
 end
 
 -- fzf browser
 
-local function browse(config, cwd, find_mode)
-    cwd = vim.fn.resolve(eval(cwd) or eval(config.cwd))
-    cwd = cwd:gsub("/+$", "")
+-- exec_silent actions keep the fzf process alive while the fn runs; starting
+-- a new picker from one swaps the buffer into the same window (no flicker)
+local function action(fn)
+    return { fn = fn, exec_silent = true }
+end
+
+browse = function(config, cwd, find_mode)
+    cwd = vim.fn.resolve(eval(cwd) or eval(config.cwd)):gsub("/+$", "")
 
     local fzf = require("fzf-lua")
     local cmd = find_mode and config.find_cmd or config.cmd
+
+    local function sel_path(selected)
+        if not selected or #selected == 0 then return end
+        return cwd .. "/" .. fzf.path.entry_to_file(selected[1]).path
+    end
 
     local opts = vim.tbl_deep_extend("force", {
         _type = "file",
         cwd = cwd,
         prompt = vim.fn.fnamemodify(cwd, ":~") .. "/",
         formatter = false,
-        file_icons = true,
-        color_icons = true,
         previewer = "builtin",
         winopts = {
-            backdrop = false, -- use our own backdrop
+            backdrop = false, -- use our own session-wide backdrop
             border = config.border,
             on_close = function()
-                vim.schedule(function()
-                    if transitioning then return end
-                    if not oil_win or not api.nvim_win_is_valid(oil_win) then
-                        close_backdrop()
-                    end
-                end)
+                if not (state.oil_win and api.nvim_win_is_valid(state.oil_win)) then
+                    close_backdrop()
+                end
             end,
         },
         actions = {
-            ["default"] = function(selected)
-                if not selected or #selected == 0 then return end
-                local entry = fzf.path.entry_to_file(selected[1]).path
-                local full = cwd .. "/" .. entry
+            ["enter"] = action(function(selected)
+                local full = sel_path(selected)
+                if not full then return end
                 if vim.fn.isdirectory(full) == 1 then
                     browse(config, full, find_mode)
                 else
-                    close_backdrop()
+                    fzf.win.close()
                     vim.cmd("edit " .. vim.fn.fnameescape(full))
                 end
-            end,
-            [vim_to_fzf(config.keys.parent)] = function()
+            end),
+            [vim_to_fzf(config.keys.parent)] = action(function()
                 local parent = vim.fn.fnamemodify(cwd, ":h")
                 if parent ~= cwd then browse(config, parent, find_mode) end
-            end,
-            [vim_to_fzf(config.keys.child)] = function(selected)
-                if not selected or #selected == 0 then return end
-                local entry = fzf.path.entry_to_file(selected[1]).path
-                local full = cwd .. "/" .. entry
-                if vim.fn.isdirectory(full) == 1 then
+            end),
+            [vim_to_fzf(config.keys.child)] = action(function(selected)
+                local full = sel_path(selected)
+                if full and vim.fn.isdirectory(full) == 1 then
                     browse(config, full, find_mode)
                 end
-            end,
-            [vim_to_fzf(config.keys.toggle_find)] = function()
+            end),
+            [vim_to_fzf(config.keys.toggle_find)] = action(function()
                 browse(config, cwd, not find_mode)
-            end,
-            [vim_to_fzf(config.keys.home)] = function()
+            end),
+            [vim_to_fzf(config.keys.home)] = action(function()
                 browse(config, vim.env.HOME, find_mode)
-            end,
-            [vim_to_fzf(config.keys.edit)] = function()
-                if transitioning then return end
-                transitioning = true
-                local ok, err = pcall(open_editor, config, cwd, function(dir)
-                    browse(config, dir, find_mode)
-                end)
-                vim.schedule(function() transitioning = false end)
-                if not ok then vim.notify("fzf-oil: " .. tostring(err), vim.log.levels.ERROR) end
-            end,
+            end),
+            [vim_to_fzf(config.keys.edit)] = action(function()
+                state.hidden_cwd = cwd
+                local ok, err = pcall(open_editor, config, cwd, find_mode)
+                if ok then
+                    fzf.hide()
+                else
+                    state.hidden_cwd = nil
+                    notify_err(err)
+                end
+            end),
         },
     }, config.fzf_exec_opts)
 
@@ -280,24 +282,20 @@ end
 -- public api
 
 M.setup = function(opts)
-    if not pcall(require, "fzf-lua") then
-        vim.notify("fzf-oil: missing required plugin fzf-lua", vim.log.levels.ERROR)
-        return
-    end
-    if not pcall(require, "oil") then
-        vim.notify("fzf-oil: missing required plugin oil.nvim", vim.log.levels.ERROR)
-        return
+    for _, dep in ipairs({ "fzf-lua", "oil" }) do
+        if not pcall(require, dep) then
+            return notify_err("missing required plugin " .. dep)
+        end
     end
 
     local config = vim.tbl_deep_extend("force", defaults, opts or {})
-    active_config = config
+    state.config = config
 
     config.browse = function(cwd, find_mode)
-        create_backdrop()
+        ensure_backdrop()
         if config.start_mode == "oil" then
-            open_editor(config, cwd, function(dir)
-                browse(config, dir, find_mode)
-            end)
+            state.hidden_cwd = nil
+            open_editor(config, cwd and eval(cwd), find_mode)
         else
             browse(config, cwd, find_mode)
         end
@@ -314,7 +312,8 @@ M.override = function(conf)
     conf.height = win.height
     conf.row = win.row
     conf.col = win.col
-    conf.border = active_config.border
+    conf.zindex = win.zindex
+    conf.border = state.config.border
     return conf
 end
 
