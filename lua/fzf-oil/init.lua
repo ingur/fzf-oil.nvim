@@ -404,6 +404,8 @@ browse = function(config, cwd, find_mode)
                     local ok, err = pcall(open_editor, config, session.cwd, session.find)
                     if ok then
                         fzf.hide()
+                        -- hide() restores focus to the pre-fzf window
+                        api.nvim_set_current_win(state.oil_win)
                     else
                         state.hidden_cwd = nil
                         notify_err(err)
