@@ -75,7 +75,7 @@ vim.keymap.set("n", "<leader>fb", browser.browse, { desc = "File browser" })
 local defaults = {
     cmd = "fd --max-depth 1 --hidden --exclude .git --type f --type d --type l",
     find_cmd = "fd --hidden --exclude .git --type f --type l",
-    cwd = function()        -- falls back to getcwd() for non-file buffers
+    cwd = function() -- falls back to getcwd() for non-file buffers
         local dir = vim.fn.expand("%:p:h")
         if dir ~= "" and vim.fn.isdirectory(dir) == 1 then
             return dir
