@@ -2,9 +2,11 @@ local M = {}
 
 local api = vim.api
 
+local fd = vim.fn.executable("fd") == 0 and vim.fn.executable("fdfind") == 1 and "fdfind" or "fd"
+
 local defaults = {
-    cmd = "fd --max-depth 1 --hidden --exclude .git --type f --type d --type l",
-    find_cmd = "fd --hidden --exclude .git --type f --type l",
+    cmd = fd .. " --max-depth 1 --hidden --exclude .git --type f --type d --type l",
+    find_cmd = fd .. " --hidden --exclude .git --type f --type l",
     cwd = function()
         local dir = vim.fn.expand("%:p:h")
         if dir ~= "" and vim.fn.isdirectory(dir) == 1 then
