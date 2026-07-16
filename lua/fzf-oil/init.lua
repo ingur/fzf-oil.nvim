@@ -118,6 +118,7 @@ local function ensure_backdrop()
     local opacity = fzf_winopts().backdrop
     if not opacity or opacity == false then return end
     if type(opacity) == "boolean" then opacity = 60 end
+    if not api.nvim_get_hl(0, { name = "Normal", link = false }).bg then return end
 
     local buf = api.nvim_create_buf(false, true)
     local win = api.nvim_open_win(buf, false, {
