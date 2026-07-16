@@ -26,6 +26,7 @@ local defaults = {
         edit = "<C-e>",
         quit = "q",
         home = "<C-g>",
+        back = "<C-o>",
     },
     fzf_exec_opts = {},
 }
@@ -102,7 +103,12 @@ local state = {
     oil_win = nil,    -- oil float window while in oil mode
     hidden_cwd = nil, -- cwd of the hidden fzf picker while in oil mode
     fzf_panes = nil,  -- fzf list/preview rects captured when toggling to oil
+    history = {},     -- visited directories for back navigation
 }
+
+local function remember_dir(dir)
+    state.history[#state.history + 1] = dir
+end
 
 local function close_backdrop()
     local b = state.backdrop
@@ -230,11 +236,12 @@ local function open_editor(config, cwd, find_mode)
         mapped = {}
     end
 
+    local oil = require("oil")
+
     local function toggle_back(find)
         if api.nvim_get_current_win() ~= state.oil_win then return end
         if find == nil then find = find_mode end
         if find ~= find_mode then state.hidden_cwd = nil end
-        local oil = require("oil")
         local dir = oil.get_current_dir() or cwd
         -- oil only records cursor memory when navigating within oil, not on close
         local entry = oil.get_cursor_entry()
@@ -259,14 +266,28 @@ local function open_editor(config, cwd, find_mode)
             end
         end,
         [config.keys.toggle_find] = function() toggle_back(true) end,
-        [config.keys.home] = function() require("oil").open(vim.env.HOME) end,
+        [config.keys.home] = function()
+            local dir = oil.get_current_dir()
+            if vim.fs.normalize(dir) == vim.fs.normalize(vim.env.HOME) then return end
+            remember_dir(dir)
+            oil.open(vim.env.HOME)
+        end,
+        [config.keys.back] = function()
+            local dir = table.remove(state.history)
+            if dir then oil.open(dir) end
+        end,
         [config.keys.down] = "j",
         [config.keys.up] = "k",
-        [config.keys.parent] = function() require("oil.actions").parent.callback() end,
+        [config.keys.parent] = function()
+            local dir = oil.get_current_dir()
+            if vim.fn.fnamemodify(dir, ":h") ~= dir then remember_dir(dir) end
+            require("oil.actions").parent.callback()
+        end,
         [config.keys.child] = function()
-            local oil = require("oil")
+            local dir = oil.get_current_dir()
             local entry = oil.get_cursor_entry()
-            if entry and vim.fn.isdirectory(oil.get_current_dir() .. entry.name) == 1 then
+            if entry and vim.fn.isdirectory(dir .. entry.name) == 1 then
+                remember_dir(dir)
                 require("oil.actions").select.callback()
             end
         end,
@@ -332,8 +353,10 @@ browse = function(config, cwd, find_mode)
     local fzf = require("fzf-lua")
     local session = { cwd = cwd, find = find_mode }
 
-    local function nav(o, dir)
+    local function nav(o, dir, remember)
         dir = vim.fn.resolve(dir):gsub("/+$", "")
+        if dir == session.cwd then return end
+        if remember ~= false then remember_dir(session.cwd) end
         o.cwd = dir
         session.cwd = dir
         local win = fzf.win.__SELF()
@@ -390,6 +413,10 @@ browse = function(config, cwd, find_mode)
             [vim_to_fzf(config.keys.home)] = reload(function(_, o)
                 nav(o, vim.env.HOME)
             end),
+            [vim_to_fzf(config.keys.back)] = reload(function(_, o)
+                local dir = table.remove(state.history)
+                if dir then nav(o, dir, false) end
+            end),
             [vim_to_fzf(config.keys.toggle_find)] = {
                 fn = function() session.find = not session.find end,
                 reload = true,
@@ -436,6 +463,7 @@ M.setup = function(opts)
 
     config.browse = function(cwd, find_mode)
         ensure_backdrop()
+        state.history = {}
         state.fzf_panes = nil
         if config.start_mode == "oil" then
             state.hidden_cwd = nil

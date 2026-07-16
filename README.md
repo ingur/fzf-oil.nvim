@@ -16,6 +16,7 @@
 
 ## Features
 - Browse directories with fzf-lua, navigate into subdirectories or up to parent.
+- Go back through visited directories in either mode.
 - Toggle into oil.nvim for full directory editing, toggle back to fzf.
 - Seamless transitions, query and position are preserved when toggling.
 - Fuzzy find files across all subdirectories with a single toggle.
@@ -94,6 +95,7 @@ local defaults = {
         edit = "<C-e>",
         quit = "q",
         home = "<C-g>",
+        back = "<C-o>",
     },
     fzf_exec_opts = {},
 }
@@ -116,6 +118,7 @@ local defaults = {
 | `<C-f>` | Toggle find mode |
 | `<C-e>` | Switch to oil |
 | `<C-g>` | Jump to home directory |
+| `<C-o>` | Go to previous directory |
 
 ### oil mode
 
@@ -128,5 +131,6 @@ local defaults = {
 | `<C-e>` | Switch back to fzf |
 | `q` | Quit the browser |
 | `<C-g>` | Jump to home directory |
+| `<C-o>` | Go to previous directory |
 
 All keys are configurable through `setup({ keys = { ... } })`.
