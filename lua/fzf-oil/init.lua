@@ -102,12 +102,19 @@ local state = {
     backdrop = nil,   -- { win, buf } dimming the editor for the whole session
     oil_win = nil,    -- oil float window while in oil mode
     hidden_cwd = nil, -- cwd of the hidden fzf picker while in oil mode
+    source_win = nil, -- window that opened the browser
     fzf_panes = nil,  -- fzf list/preview rects captured when toggling to oil
     history = {},     -- visited directories for back navigation
 }
 
 local function remember_dir(dir)
     state.history[#state.history + 1] = dir
+end
+
+local function restore_source()
+    if state.source_win and api.nvim_win_is_valid(state.source_win) then
+        api.nvim_set_current_win(state.source_win)
+    end
 end
 
 local function close_backdrop()
@@ -326,6 +333,7 @@ local function open_editor(config, cwd, find_mode)
             state.oil_win = nil
             close_backdrop()
             discard_hidden()
+            restore_source()
         end,
     })
 
@@ -383,6 +391,7 @@ browse = function(config, cwd, find_mode)
             on_close = function()
                 if not (state.oil_win and api.nvim_win_is_valid(state.oil_win)) then
                     close_backdrop()
+                    restore_source()
                 end
             end,
         },
@@ -462,6 +471,7 @@ M.setup = function(opts)
     state.config = config
 
     config.browse = function(cwd, find_mode)
+        state.source_win = api.nvim_get_current_win()
         ensure_backdrop()
         state.history = {}
         state.fzf_panes = nil
