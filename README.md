@@ -93,9 +93,9 @@ local defaults = {
         up = "<C-k>",
         toggle_find = "<C-f>",
         edit = "<C-e>",
-        quit = "q",
         home = "<C-g>",
         back = "<C-o>",
+        quit = "q",
     },
     fzf_exec_opts = {},
 }
@@ -129,8 +129,8 @@ local defaults = {
 | `<C-j>` / `<C-k>` | Move down / up |
 | `<C-f>` | Switch to fzf in find mode |
 | `<C-e>` | Switch back to fzf |
-| `q` | Quit the browser |
 | `<C-g>` | Jump to home directory |
 | `<C-o>` | Go to previous directory |
+| `q` | Quit the browser |
 
 All keys are configurable through `setup({ keys = { ... } })`.

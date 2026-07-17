@@ -24,9 +24,9 @@ local defaults = {
         up = "<C-k>",
         toggle_find = "<C-f>",
         edit = "<C-e>",
-        quit = "q",
         home = "<C-g>",
         back = "<C-o>",
+        quit = "q",
     },
     fzf_exec_opts = {},
 }
